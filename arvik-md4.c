@@ -8,6 +8,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <string.h>
+
+// Provided arvik header file
 #include "arvik.h"
 
 // Prototypes
@@ -15,21 +22,20 @@ void print_help(void);
 
 int main(int argc, char *argv[]) {
   int opt = -1;
-  int extract_flag = 0, create_flag = 0, toc_flag = 0, validate_flag = 0;
   int verbose = 0;
   char *filename = NULL;
-  
+  var_action_t action = ACTION_NONE;
 
   while ((opt = getopt(argc, argv, ARVIK_OPTIONS)) != -1) {
     switch (opt) {
     case 'x':
-      extract_flag = 1;
+      action = ACTION_EXTRACT;
       break;
     case 'c':
-      create_flag = 1;
+      action = ACTION_CREATE;
       break;
     case 't':
-      toc_flag = 1;
+      action = ACTION_TOC;
       break;
     case 'f':
       filename = optarg;
@@ -42,7 +48,7 @@ int main(int argc, char *argv[]) {
       verbose = 1;
       break;
     case 'V':
-      validate_flag = 1;
+      action = ACTION_VALIDATE;
       break;
     default:
       exit(INVALID_CMD_OPTION);
