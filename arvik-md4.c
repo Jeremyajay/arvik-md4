@@ -29,12 +29,15 @@ int main(int argc, char *argv[]) {
   while ((opt = getopt(argc, argv, ARVIK_OPTIONS)) != -1) {
     switch (opt) {
     case 'x':
+      if (action != ACTION_NONE) exit(INVALID_CMD_OPTION);
       action = ACTION_EXTRACT;
       break;
     case 'c':
+      if (action != ACTION_NONE) exit(INVALID_CMD_OPTION);
       action = ACTION_CREATE;
       break;
     case 't':
+      if (action != ACTION_NONE) exit(INVALID_CMD_OPTION);
       action = ACTION_TOC;
       break;
     case 'f':
@@ -48,6 +51,7 @@ int main(int argc, char *argv[]) {
       verbose = 1;
       break;
     case 'V':
+      if (action != ACTION_NONE) exit(INVALID_CMD_OPTION);
       action = ACTION_VALIDATE;
       break;
     default:
@@ -56,7 +60,16 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  if (action == ACTION_NONE) {
+    fprintf(stderr, "No action given\n");
+    exit(NO_ACTION_GIVEN);
+  }
   
   
   return EXIT_SUCCESS;
+}
+
+
+void print_help(void) {
+  printf("\n");
 }
