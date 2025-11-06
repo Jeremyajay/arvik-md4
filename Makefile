@@ -9,20 +9,19 @@ CFLAGS = $(DEBUG) -Wall -Wextra -Wshadow -Wunreachable-code -Wredundant-decls \
 	-Wmissing-declarations -Wold-style-definition -Wmissing-prototypes \
 	-Wdeclaration-after-statement -Wno-return-local-addr -Werror \
 	-Wunsafe-loop-optimizations -Wuninitialized $(DEFINES)
-PROG1 = arvik-md4
-PROG2 =
-PROGS = $(PROG1)
+LDFLAGS = -lmd
+PROG = arvik-md4
 
-all: $(PROGS)
+all: $(PROG)
 
-$(PROG1): $(PROG1).o
-	$(CC) $(CFLAGS) -o $@ $^
+$(PROG): $(PROG).o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(PROG1).o: $(PROG1).c
+$(PROG).o: $(PROG).c arvik.h
 	$(CC) $(CFLAGS) -c $<
 
 clean cls:
-	rm -f $(PROGS) *.o *~ \#*
+	rm -f $(PROG) *.o *~ \#*
 
 git:
 	if [ ! -d .git ]; then \
@@ -36,5 +35,7 @@ git:
 	@echo "Pushing to remote repository..."
 	git push -u origin main
 
+TAR_FILE = ${LOGNAME}_Lab2.tar.gz
 tar:
-	tar cvfa ${LOGNAME}_Lab2.tar.gz *.[ch] Makefile
+	rm -f $(TAR_FILE)
+	tar cvaf $(TAR_FILE) arvik-md4.c Makefile

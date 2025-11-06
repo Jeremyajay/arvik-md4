@@ -19,6 +19,11 @@
 
 // Prototypes
 void print_help(void);
+void create_archive(const char *archive_name, int verbose);
+void extract_archive(const char *archive_name, int verbose);
+void list_archive(const char *archive_name, int verbose);
+void validate_archive(const char *archive_name, int verbose);
+
 
 int main(int argc, char *argv[]) {
   int opt = -1;
@@ -60,16 +65,59 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (action == ACTION_NONE) {
-    fprintf(stderr, "No action given\n");
+  switch (action) {
+  case ACTION_CREATE:
+    create_archive(filename, verbose);
+    break;
+  case ACTION_EXTRACT:
+    extract_archive(filename, verbose);
+    break;
+  case ACTION_TOC:
+    list_archive(filename, verbose);
+    break;
+  case ACTION_VALIDATE:
+    validate_archive(filename, verbose);
+    break;
+  case ACTION_NONE:
+    fprintf(stderr, "No action specified.\n");
     exit(NO_ACTION_GIVEN);
   }
-  
   
   return EXIT_SUCCESS;
 }
 
 
 void print_help(void) {
-  printf("\n");
+  printf("Usage: arvik-md4 -[cxtvVf:h] archive-file file...\n");
+  printf("        -c           create a new archive file\n");
+  printf("        -x           extract members from an existing archive file\n");
+  printf("        -t           show the table of contents of archive file\n");
+  printf("        -f filename  name of archive file to use\n");
+  printf("        -V           Validate the md4 values for the header and data\n");
+  printf("        -v           verbose output\n");
+  printf("        -h           show help text\n");
+}
+
+
+void create_archive(const char *archive_name, int verbose) {
+  (void)archive_name;
+  (void)verbose;
+}
+
+
+void extract_archive(const char *archive_name, int verbose) {
+  (void)archive_name;
+  (void)verbose;
+}
+
+
+void list_archive(const char *archive_name, int verbose) {
+  (void)archive_name;
+  (void)verbose;
+}
+
+
+void validate_archive(const char *archive_name, int verbose) {
+  (void)archive_name;
+  (void)verbose;
 }
