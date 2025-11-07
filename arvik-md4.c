@@ -13,13 +13,14 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
+#include <md4.h>
 
 // Provided arvik header file
 #include "arvik.h"
 
 // Prototypes
 void print_help(void);
-void create_archive(const char *archive_name, int verbose);
+void create_archive(const char *archive_name, int verbose, char **files, int file_count);
 void extract_archive(const char *archive_name, int verbose);
 void list_archive(const char *archive_name, int verbose);
 void validate_archive(const char *archive_name, int verbose);
@@ -67,7 +68,7 @@ int main(int argc, char *argv[]) {
 
   switch (action) {
   case ACTION_CREATE:
-    create_archive(filename, verbose);
+    create_archive(filename, verbose, &argv[optind], argc - optind);
     break;
   case ACTION_EXTRACT:
     extract_archive(filename, verbose);
@@ -99,9 +100,64 @@ void print_help(void) {
 }
 
 
-void create_archive(const char *archive_name, int verbose) {
-  (void)archive_name;
-  (void)verbose;
+void create_archive(const char *archive_name, int verbose, char **files, int file_count) {
+  int afd = STDOUT_FILENO;
+  ssize_t written;
+  struct stat sb;
+  arvik_header_t header;
+  
+  // Open the archive file, or default to stdout
+  if (archive_name != NULL) {
+    afd = open(archive_name,
+	       O_WRONLY | O_CREAT | O_TRUNC,
+	       S_IRUSR | S_IWUSR);
+    if (afd < 0) {
+      perror("open archive");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  written = write(afd, ARVIK_TAG, strlen(ARVIK_TAG));
+  if (written != (ssize_t)strlen(ARVIK_TAG)) {
+    perror("write tag");
+    exit(EXIT_FAILURE);
+  }
+
+  if (verbose) {
+    fprintf(stderr, "Creating archive: %s\n",
+	    archive_name ? archive_name : "(stdout)");
+  }
+
+  for (int i = 0; i < file_count; i++) {
+    const char *fname = files[i];
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+      perror(fname);
+      close(afd);
+      exit(EXIT_FAILURE);
+    }
+
+    if (fstat(fd, &sb) < 0) {
+      perror("fstat");
+      close(fd);
+      close(afd);
+      exit(EXIT_FAILURE);
+    }
+
+    memset(&header, 0, sizeof(header));
+
+
+    if (verbose) {
+      fprintf(stderr, "Adding file: %s (%ld bytes)\n",
+	      fname, (long)sb.st_size);
+    }
+
+    close(fd);
+  }
+
+  if (archive_name != NULL) {
+    close(afd);
+  }
 }
 
 
