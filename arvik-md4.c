@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 #include <md4.h>
 
 // Provided arvik header file
@@ -239,18 +240,293 @@ void create_archive(const char *archive_name, int verbose, char **files, int fil
 
 
 void extract_archive(const char *archive_name, int verbose) {
-  (void)archive_name;
-  (void)verbose;
+  int afd = STDIN_FILENO;
+  arvik_header_t header;
+  arvik_footer_t footer;
+  char tagbuf[sizeof(ARVIK_TAG)];
+  char buf[4096];
+  ssize_t n;
+  struct timespec ts[2];
+
+  // Open archive
+  if (archive_name != NULL) {
+    afd = open(archive_name, O_RDONLY);
+    if (afd < 0) {
+      perror("open archive");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Verify ARVIK_TAG
+  n = read(afd, tagbuf, strlen(ARVIK_TAG));
+  if (n != (ssize_t)strlen(ARVIK_TAG) ||
+      memcmp(tagbuf, ARVIK_TAG, strlen(ARVIK_TAG)) != 0) {
+    fprintf(stderr, "Invalid archive format.\n");
+    exit(BAD_TAG);
+  }
+
+  // Read first header
+  n = read(afd, &header, sizeof(header));
+
+  while (n == sizeof(header)) {
+    char fname[ARVIK_NAME_LEN];
+    char *lt;
+    long fsize;
+    int out;
+    long remaining;
+    mode_t mode;
+    strncpy(fname, header.arvik_name, ARVIK_NAME_LEN);
+    lt = strchr(fname, '<');
+    if (lt) *lt = '\0';
+
+    fsize = atol(header.arvik_size);
+
+    // Open output file
+    out = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out < 0) {
+      perror(fname);
+      exit(EXTRACT_FAIL);
+    }
+
+    // Copy file data
+    remaining = fsize;
+    while (remaining > 0) {
+      ssize_t max = (ssize_t)sizeof(buf);
+      ssize_t chunk = (remaining > max) ? max : remaining;
+      n = read(afd, buf, chunk);
+      if (n <= 0) {
+	perror("read data");
+	exit(READ_FAIL);
+      }
+      if (write(out, buf, n) != n) {
+	perror("write output");
+	exit(EXTRACT_FAIL);
+      }
+      remaining -= n;
+    }
+
+    if (read(afd, &footer, sizeof(footer)) != sizeof(footer)) {
+      fprintf(stderr, "Missing footer.\n");
+      exit(READ_FAIL);
+    }
+
+    mode = strtol(header.arvik_mode, NULL, 8);
+    fchmod(out, mode);
+
+    // Restore timestamps
+    ts[0].tv_sec = atol(header.arvik_date);
+    ts[0].tv_nsec = 0;
+    ts[1].tv_sec = atol(header.arvik_date);
+    ts[1].tv_nsec = 0;
+    futimens(out, ts);
+
+    if (verbose) {
+      printf("Extracted: %s\n", fname);
+    }
+
+    close(out);
+
+    // Read next header
+    n = read(afd, &header, sizeof(header));
+  }
+
+  if (n < 0) {
+    perror("read header");
+    exit(READ_FAIL);
+  }
+
+  if (archive_name) close(afd);
 }
 
 
 void list_archive(const char *archive_name, int verbose) {
-  (void)archive_name;
-  (void)verbose;
+  int afd = STDIN_FILENO;
+  arvik_header_t header;
+  arvik_footer_t footer;
+  char tagbuf[sizeof(ARVIK_TAG)];
+  ssize_t n;
+
+  // Open archive for reading
+  if (archive_name != NULL) {
+    afd = open(archive_name, O_RDONLY);
+    if (afd < 0) {
+      perror("open archive");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Read/Verify ARVIK_TAG
+  n = read(afd, tagbuf, strlen(ARVIK_TAG));
+  if (n != (ssize_t)strlen(ARVIK_TAG) ||
+      memcmp(tagbuf, ARVIK_TAG, strlen(ARVIK_TAG)) != 0) {
+    fprintf(stderr, "Invalid archive format.\n");
+    exit(BAD_TAG);
+  }
+
+  // Read first header
+  n = read(afd, &header, sizeof(header));
+
+  while (n == sizeof(header)) {
+    char fname[ARVIK_NAME_LEN];
+    char *lt;
+    long fsize;
+    time_t t;
+    struct tm *tm;
+    char tbuf[64];
+    
+    strncpy(fname, header.arvik_name, ARVIK_NAME_LEN);
+    lt = strchr(fname, '<');
+    if (lt) *lt = '\0';
+
+    fsize = atol(header.arvik_size);
+
+    if (!verbose) {
+      printf("%s\n", fname);
+    } else {
+      // Long listing format
+      t = atol(header.arvik_date);
+      tm = localtime(&t);
+      strftime(tbuf, sizeof(tbuf), "%b %e %R %Y", tm);
+
+      printf("%s %s %s %s %s %ld\n",
+	     fname,
+	     header.arvik_uid,
+	     header.arvik_gid,
+	     header.arvik_mode,
+	     tbuf,
+	     fsize);
+    }
+
+    // Skip file data
+    if (lseek(afd, fsize, SEEK_CUR) < 0) {
+      perror("lseek");
+      exit(READ_FAIL);
+    }
+
+    // Read footer
+    if (read(afd, &footer, sizeof(footer)) != sizeof(footer)) {
+      fprintf(stderr, "Missing footer.\n");
+      exit(READ_FAIL);
+    }
+
+    // Read next header
+    n = read(afd, &header, sizeof(header));
+    
+  }
+
+  if (n < 0) {
+    perror("read");
+    exit(READ_FAIL);
+  }
+
+  if (archive_name) close(afd);
 }
 
 
 void validate_archive(const char *archive_name, int verbose) {
-  (void)archive_name;
-  (void)verbose;
+  int afd = STDIN_FILENO;
+  arvik_header_t header;
+  arvik_footer_t footer;
+  char tagbuf[sizeof(ARVIK_TAG)];
+  char buf[4096];
+  char h_hex[33], d_hex[33]; // -> Used to convert md4 buffers into hex strings
+  ssize_t n;
+  int ok_header, ok_data;
+
+  unsigned char md4_header[MD4_DIGEST_LENGTH];
+  unsigned char md4_data[MD4_DIGEST_LENGTH];
+
+  MD4_CTX ctx_header;
+  MD4_CTX ctx_data;
+
+  // Open archive
+  if (archive_name != NULL) {
+    afd = open(archive_name, O_RDONLY);
+    if (afd < 0) {
+      perror("open archive");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Verify ARVIK_TAG
+  n = read(afd, tagbuf, strlen(ARVIK_TAG));
+  if (n != (ssize_t)strlen(ARVIK_TAG) ||
+      memcmp(tagbuf, ARVIK_TAG, strlen(ARVIK_TAG)) != 0) {
+    fprintf(stderr, "Invalid archive tag.\n");
+    exit(BAD_TAG);
+  }
+
+  // Read first header
+  n = read(afd, &header, sizeof(header));
+
+  while (n == sizeof(header)) {
+    char fname[ARVIK_NAME_LEN];
+    char *lt;
+    long fsize;
+    long remaining;
+    fsize = atol(header.arvik_size);
+
+    // Computer header md4
+    MD4Init(&ctx_header);
+    MD4Update(&ctx_header, (const unsigned char *)&header, sizeof(header));
+    MD4Final(md4_header, &ctx_header);
+
+    // Compute data md4
+    MD4Init(&ctx_data);
+    remaining = fsize;
+    while (remaining > 0) {
+      ssize_t max = (ssize_t)sizeof(buf);
+      ssize_t chunk = (remaining > max) ? max : remaining;
+      n = read(afd, buf, chunk);
+      if (n <= 0) {
+	perror("read data");
+	exit(READ_FAIL);
+      }
+      MD4Update(&ctx_data, (const unsigned char *)buf, n);
+      remaining -= n;
+    }
+    MD4Final(md4_data, &ctx_data);
+
+    // Read footer
+    if (read(afd, &footer, sizeof(footer)) != sizeof(footer)) {
+      fprintf(stderr, "Missing footer.\n");
+      exit(READ_FAIL);
+    }
+
+    // Convert md4 buffers into hex strings
+    for (int i = 0; i < MD4_DIGEST_LENGTH; i++) {
+      snprintf(h_hex + i*2, 3, "%02x", md4_header[i]);
+      snprintf(d_hex + i*2, 3, "%02x", md4_data[i]);
+    }
+
+    ok_header = memcmp(h_hex, footer.md4sum_header, 32) == 0;
+    ok_data = memcmp(d_hex, footer.md4sum_data, 32) == 0;
+
+    // Clean filename
+    strncpy(fname, header.arvik_name, ARVIK_NAME_LEN);
+    lt = strchr(fname, '<');
+    if (lt) *lt = '\0';
+
+    if (verbose) {
+      printf("%s: header=%s, data=%s\n",
+	     fname,
+	     ok_header ? "OK" : "BAD",
+	     ok_data ? "OK" : "BAD");
+    }
+
+    if (!ok_header || !ok_data) {
+      fprintf(stderr, "Validation failed for %s\n", fname);
+      exit(MD4_ERROR);
+    }
+
+    // Read next header
+    n = read(afd, &header, sizeof(header));
+  }
+
+  if (n < 0) {
+    perror("read header");
+    exit(READ_FAIL);
+  }
+
+  if (archive_name) close(afd);
 }
