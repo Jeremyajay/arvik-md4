@@ -76,6 +76,14 @@ int main(int argc, char *argv[]) {
   }
 
 
+  for (int i = optind; i < argc; ++i) {
+    if (argv[i] != NULL && argv[i][0] == '-') {
+        fprintf(stderr, "Invalid combination of options / stray option '%s'.\n", argv[i]);
+        exit(INVALID_CMD_OPTION);
+    }
+  }
+
+
   switch (action) {
   case ACTION_CREATE:
     create_archive(filename, verbose, &argv[optind], argc - optind);
@@ -291,28 +299,30 @@ void create_archive(const char *archive_name, int verbose,
 }
 
 
-void extract_archive(const char *archive_name, int verbose) {
+void extract_archive(const char *archive_name, int verbose)
+{
     int afd = STDIN_FILENO;
     arvik_header_t header;
     arvik_footer_t footer;
     char tagbuf[sizeof(ARVIK_TAG)];
     ssize_t n;
 
-    /* Open archive */
+    /* open archive */
     if (archive_name != NULL) {
         afd = open(archive_name, O_RDONLY);
         if (afd < 0) { perror("open archive"); exit(EXTRACT_FAIL); }
     }
 
-    /* Verify ARVIK_TAG */
+    /* verify ARVIK_TAG */
     n = read(afd, tagbuf, (ssize_t)strlen(ARVIK_TAG));
-    if (n != (ssize_t)strlen(ARVIK_TAG) || memcmp(tagbuf, ARVIK_TAG, strlen(ARVIK_TAG)) != 0) {
-        if (archive_name) close(afd);
+    if (n != (ssize_t)strlen(ARVIK_TAG) ||
+        memcmp(tagbuf, ARVIK_TAG, strlen(ARVIK_TAG)) != 0) {
         fprintf(stderr, "Invalid archive format (bad tag).\n");
+        if (archive_name) close(afd);
         exit(BAD_TAG);
     }
 
-    /* Read first header */
+    /* read first header */
     n = read(afd, &header, (ssize_t)sizeof(header));
     while (n == (ssize_t)sizeof(header)) {
         char fname[ARVIK_NAME_LEN + 1];
@@ -320,31 +330,30 @@ void extract_archive(const char *archive_name, int verbose) {
         long fsize_long;
         off_t fsize;
         int outfd;
-        struct timespec ts[2];
-        mode_t mode;
-        // ssize_t toread;
-        ssize_t r;
         unsigned char buf[4096];
+        ssize_t r;
+        size_t chunk;
+        mode_t mode;
+        struct timespec ts[2];
 
-        /* sanity: ensure header arvik_term equals ARVIK_TERM */
+        /* check header terminator */
         if (memcmp(header.arvik_term, ARVIK_TERM, ARVIK_TERM_LEN) != 0) {
-            fprintf(stderr, "Bad header terminator detected. Archive may be corrupted.\n");
+            fprintf(stderr, "Bad header terminator.\n");
             if (archive_name) close(afd);
             exit(READ_FAIL);
         }
 
-        /* Extract filename safely (terminate at ARVIK_NAME_TERM or end) */
+        /* extract filename */
         memset(fname, 0, sizeof(fname));
         memcpy(fname, header.arvik_name, ARVIK_NAME_LEN);
         lt = memchr(fname, ARVIK_NAME_TERM, ARVIK_NAME_LEN);
         if (lt) *lt = '\0';
-        else fname[ARVIK_NAME_LEN] = '\0'; /* ensure termination */
 
-        /* Parse size, date, mode in a defensive way */
+        /* parse file size */
         errno = 0;
         fsize_long = strtol(header.arvik_size, NULL, 10);
         if (errno != 0 || fsize_long < 0) {
-            fprintf(stderr, "Invalid file size in header for '%s'.\n", fname[0] ? fname : "(unknown)");
+            fprintf(stderr, "Invalid file size for '%s'.\n", fname);
             if (archive_name) close(afd);
             exit(READ_FAIL);
         }
@@ -352,48 +361,28 @@ void extract_archive(const char *archive_name, int verbose) {
 
         /* open output file */
         outfd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (outfd < 0) {
-            perror(fname);
-            if (archive_name) close(afd);
-            exit(EXTRACT_FAIL);
-        }
+        if (outfd < 0) { perror(fname); if (archive_name) close(afd); exit(EXTRACT_FAIL); }
 
-        /* copy file data exactly fsize bytes, in chunks */
+        /* copy data */
         while (fsize > 0) {
-            size_t chunk = (fsize > (off_t)sizeof(buf)) ? sizeof(buf) : (size_t)fsize;
+            chunk = (fsize > (off_t)sizeof(buf)) ? sizeof(buf) : (size_t)fsize;
             r = read(afd, buf, (ssize_t)chunk);
-            if (r <= 0) {
-                if (r == 0) fprintf(stderr, "Unexpected EOF while reading data for '%s'\n", fname);
-                else perror("read data");
-                close(outfd);
-                if (archive_name) close(afd);
-                exit(READ_FAIL);
-            }
-            if (write(outfd, buf, r) != r) {
-                perror("write output");
-                close(outfd);
-                if (archive_name) close(afd);
-                exit(EXTRACT_FAIL);
-            }
+            if (r <= 0) { perror("read data"); close(outfd); if (archive_name) close(afd); exit(READ_FAIL); }
+            if (write(outfd, buf, r) != r) { perror("write output"); close(outfd); if (archive_name) close(afd); exit(EXTRACT_FAIL); }
             fsize -= r;
         }
 
-        /* consume padding if size was odd */
-        if ((strtol(header.arvik_size, NULL, 10) % 2) == 1) {
+        /* consume padding if odd */
+        if (fsize_long % 2 == 1) {
             char pad;
             r = read(afd, &pad, 1);
-            if (r != 1) {
-                perror("read padding");
-                close(outfd);
-                if (archive_name) close(afd);
-                exit(READ_FAIL);
-            }
+            if (r != 1) { perror("read padding"); close(outfd); if (archive_name) close(afd); exit(READ_FAIL); }
         }
 
         /* read footer */
         r = read(afd, &footer, (ssize_t)sizeof(footer));
         if (r != (ssize_t)sizeof(footer)) {
-            fprintf(stderr, "Missing footer after '%s'. Archive truncated or corrupted.\n", fname);
+            fprintf(stderr, "Missing footer for '%s'.\n", fname);
             close(outfd);
             if (archive_name) close(afd);
             exit(READ_FAIL);
@@ -401,24 +390,14 @@ void extract_archive(const char *archive_name, int verbose) {
 
         /* restore mode */
         mode = (mode_t)strtol(header.arvik_mode, NULL, 8);
-        if (fchmod(outfd, mode) < 0) {
-            perror("fchmod");
-            close(outfd);
-            if (archive_name) close(afd);
-            exit(EXTRACT_FAIL);
-        }
+        fchmod(outfd, mode);
 
-        /* restore timestamps (arvik_date stored as decimal seconds) */
+        /* restore timestamps */
         ts[0].tv_sec = (time_t)strtol(header.arvik_date, NULL, 10);
         ts[0].tv_nsec = 0;
         ts[1].tv_sec = ts[0].tv_sec;
         ts[1].tv_nsec = 0;
-        if (futimens(outfd, ts) < 0) {
-            perror("futimens");
-            close(outfd);
-            if (archive_name) close(afd);
-            exit(EXTRACT_FAIL);
-        }
+        futimens(outfd, ts);
 
         if (verbose) fprintf(stderr, "x %s\n", fname);
 
@@ -428,11 +407,7 @@ void extract_archive(const char *archive_name, int verbose) {
         n = read(afd, &header, (ssize_t)sizeof(header));
     }
 
-    if (n < 0) {
-        perror("read header");
-        if (archive_name) close(afd);
-        exit(READ_FAIL);
-    }
+    if (n < 0) { perror("read header"); if (archive_name) close(afd); exit(READ_FAIL); }
 
     if (archive_name) close(afd);
 }
