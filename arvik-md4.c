@@ -30,80 +30,101 @@ void list_archive(const char *archive_name, int verbose);
 void validate_archive(const char *archive_name, int verbose);
 static void format_mode(mode_t mode, char *buf);
 
+int main(int argc, char *argv[])
+{
+    int opt;
+    int verbose = 0;
+    char *archive_name = NULL;
+    var_action_t action = ACTION_NONE;
 
-int main(int argc, char *argv[]) {
-  int opt = -1;
-  int verbose = 0;
-  char *filename = NULL;
-  var_action_t action = ACTION_NONE;
+    while ((opt = getopt(argc, argv, ARVIK_OPTIONS)) != -1) {
 
-  while ((opt = getopt(argc, argv, ARVIK_OPTIONS)) != -1) {
-    switch (opt) {
-    case 'x':
-    case 'c':
-    case 't':
-    case 'V':
-        if (action != ACTION_NONE) {
-            fprintf(stderr, "Only one action (-c, -x, -t, -V) allowed.\n");
+        switch (opt) {
+
+        case 'c':
+            action = ACTION_CREATE;   /* last action flag wins */
+            break;
+
+        case 'x':
+            action = ACTION_EXTRACT;
+            break;
+
+        case 't':
+            action = ACTION_TOC;
+            break;
+
+        case 'V':
+            action = ACTION_VALIDATE;
+            break;
+
+        case 'f':
+            if (optarg == NULL) {
+                fprintf(stderr, "Option -f requires a filename.\n");
+                exit(INVALID_CMD_OPTION);
+            }
+            archive_name = optarg;
+            break;
+
+        case 'v':
+            verbose = 1;
+            break;
+
+        case 'h':
+            print_help();
+            exit(EXIT_SUCCESS);
+
+        default:
+            fprintf(stderr, "Invalid option.\n");
             exit(INVALID_CMD_OPTION);
         }
-        if (opt == 'x') action = ACTION_EXTRACT;
-        else if (opt == 'c') action = ACTION_CREATE;
-        else if (opt == 't') action = ACTION_TOC;
-        else if (opt == 'V') action = ACTION_VALIDATE;
-        break;
+    }
 
-    case 'f':
-        if (optarg == NULL) {
-            fprintf(stderr, "Option -f requires a filename.\n");
-            exit(INVALID_CMD_OPTION);
+    /* No action flag was provided */
+    if (action == ACTION_NONE) {
+        fprintf(stderr, "No action specified.\n");
+        exit(NO_ACTION_GIVEN);
+    }
+
+    {
+        int i;
+        for (i = optind; i < argc; i++) {
+            if (argv[i][0] == '-') {
+                fprintf(stderr,
+                        "Invalid combination of options: stray flag '%s'.\n",
+                        argv[i]);
+                exit(INVALID_CMD_OPTION);
+            }
         }
-        filename = optarg;
+    }
+
+    /* Dispatch to the selected action */
+    switch (action) {
+
+    case ACTION_CREATE:
+        create_archive(archive_name, verbose,
+                       &argv[optind], argc - optind);
         break;
 
-    case 'v':
-        verbose = 1;
+    case ACTION_EXTRACT:
+        extract_archive(archive_name, verbose);
         break;
 
-    case 'h':
-        print_help();
-        exit(EXIT_SUCCESS);
+    case ACTION_TOC:
+        list_archive(archive_name, verbose);
+        break;
+
+    case ACTION_VALIDATE:
+        validate_archive(archive_name, verbose);
+        break;
 
     default:
-        fprintf(stderr, "Invalid option.\n");
+        fprintf(stderr, "Invalid action.\n");
         exit(INVALID_CMD_OPTION);
     }
-  }
 
-
-  for (int i = optind; i < argc; ++i) {
-    if (argv[i] != NULL && argv[i][0] == '-') {
-        fprintf(stderr, "Invalid combination of options / stray option '%s'.\n", argv[i]);
-        exit(INVALID_CMD_OPTION);
-    }
-  }
-
-
-  switch (action) {
-  case ACTION_CREATE:
-    create_archive(filename, verbose, &argv[optind], argc - optind);
-    break;
-  case ACTION_EXTRACT:
-    extract_archive(filename, verbose);
-    break;
-  case ACTION_TOC:
-    list_archive(filename, verbose);
-    break;
-  case ACTION_VALIDATE:
-    validate_archive(filename, verbose);
-    break;
-  case ACTION_NONE:
-    fprintf(stderr, "No action specified.\n");
-    exit(NO_ACTION_GIVEN);
-  }
-  
-  return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
+
 
 
 void print_help(void) {
