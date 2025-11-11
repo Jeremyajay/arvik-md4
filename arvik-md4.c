@@ -2,9 +2,11 @@
 // CS333 - Jesse Chaney
 // arvik-md4.c
 
-// The purpose of this file is to read and write files. Specifically,
-// we will be reading multiple files and writing them into one
-// singular archive file.
+/*
+The purpose of this file is to read and write files. Specifically,
+we will be reading multiple files and writing them into one
+singular archive file.
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,25 +40,19 @@ int main(int argc, char *argv[])
     var_action_t action = ACTION_NONE;
 
     while ((opt = getopt(argc, argv, ARVIK_OPTIONS)) != -1) {
-
         switch (opt) {
-
         case 'c':
-            action = ACTION_CREATE;   /* last action flag wins */
+            action = ACTION_CREATE;
             break;
-
         case 'x':
             action = ACTION_EXTRACT;
             break;
-
         case 't':
             action = ACTION_TOC;
             break;
-
         case 'V':
             action = ACTION_VALIDATE;
             break;
-
         case 'f':
             if (optarg == NULL) {
                 fprintf(stderr, "Option -f requires a filename.\n");
@@ -64,18 +60,17 @@ int main(int argc, char *argv[])
             }
             archive_name = optarg;
             break;
-
         case 'v':
             verbose = 1;
             break;
-
         case 'h':
             print_help();
             exit(EXIT_SUCCESS);
-
+	    break;
         default:
             fprintf(stderr, "Invalid option.\n");
             exit(INVALID_CMD_OPTION);
+	    break;
         }
     }
 
@@ -86,8 +81,7 @@ int main(int argc, char *argv[])
     }
 
     {
-        int i;
-        for (i = optind; i < argc; i++) {
+        for (int i = optind; i < argc; i++) {
             if (argv[i][0] == '-') {
                 fprintf(stderr,
                         "Invalid combination of options: stray flag '%s'.\n",
@@ -97,29 +91,25 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* Dispatch to the selected action */
+    /* Perform the selected actions */
     switch (action) {
-
     case ACTION_CREATE:
         create_archive(archive_name, verbose,
                        &argv[optind], argc - optind);
         break;
-
     case ACTION_EXTRACT:
         extract_archive(archive_name, verbose);
         break;
-
     case ACTION_TOC:
         list_archive(archive_name, verbose);
         break;
-
     case ACTION_VALIDATE:
         validate_archive(archive_name, verbose);
         break;
-
     default:
         fprintf(stderr, "Invalid action.\n");
         exit(INVALID_CMD_OPTION);
+	break;
     }
 
     return EXIT_SUCCESS;
@@ -138,7 +128,7 @@ void print_help(void) {
   printf("        -h           show help text\n");
 }
 
-
+/* Formatting helper function */
 static void format_mode(mode_t mode, char *buf) {
   buf[0] = (mode & S_IRUSR) ? 'r' : '-';
   buf[1] = (mode & S_IWUSR) ? 'w' : '-';
@@ -164,8 +154,8 @@ void create_archive(const char *archive_name, int verbose,
     unsigned char data_md4[MD4_DIGEST_LENGTH];
     MD4_CTX ctx_header;
     MD4_CTX ctx_data;
-    char buf[4096];
-    char fbuf[64];
+    char buf[4096]; // header buffer
+    char fbuf[64]; // footer buffer
     ssize_t n;
     int i, j, fd;
     int fname_len, len, copy;
@@ -187,20 +177,18 @@ void create_archive(const char *archive_name, int verbose,
     if (write(afd, ARVIK_TAG, strlen(ARVIK_TAG)) != (ssize_t)strlen(ARVIK_TAG)) {
         perror("write tag"); exit(CREATE_FAIL);
     }
-
     if (verbose)
         fprintf(stderr, "Creating archive %s\n",
                 archive_name ? archive_name : "(stdout)");
-
     for (i = 0; i < file_count; i++) {
-
         fd = open(files[i], O_RDONLY);
-        if (fd < 0) { perror(files[i]); exit(CREATE_FAIL); }
-
+        if (fd < 0) {
+	  perror(files[i]);
+	  exit(CREATE_FAIL);
+	}
         if (fstat(fd, &sb) < 0) {
             perror("fstat"); close(fd); exit(CREATE_FAIL);
         }
-
         memset(&header, ' ', sizeof(header));
 
         /* name */
@@ -218,8 +206,9 @@ void create_archive(const char *archive_name, int verbose,
         len = strlen(fbuf);
         copy = (len < ARVIK_DATE_LEN - 1) ? len : (ARVIK_DATE_LEN - 1);
         memcpy(header.arvik_date, fbuf, copy);
-        if (copy < ARVIK_DATE_LEN - 1)
+        if (copy < ARVIK_DATE_LEN - 1) {
             memset(header.arvik_date + copy, ' ', (ARVIK_DATE_LEN - 1) - copy);
+	}
         header.arvik_date[ARVIK_DATE_LEN - 1] = ' ';
 
         /* uid */
@@ -227,8 +216,9 @@ void create_archive(const char *archive_name, int verbose,
         len = strlen(fbuf);
         copy = (len < ARVIK_UID_LEN - 1) ? len : (ARVIK_UID_LEN - 1);
         memcpy(header.arvik_uid, fbuf, copy);
-        if (copy < ARVIK_UID_LEN - 1)
+        if (copy < ARVIK_UID_LEN - 1) {
             memset(header.arvik_uid + copy, ' ', (ARVIK_UID_LEN - 1) - copy);
+	}
         header.arvik_uid[ARVIK_UID_LEN - 1] = ' ';
 
         /* gid */
@@ -236,8 +226,9 @@ void create_archive(const char *archive_name, int verbose,
         len = strlen(fbuf);
         copy = (len < ARVIK_GID_LEN - 1) ? len : (ARVIK_GID_LEN - 1);
         memcpy(header.arvik_gid, fbuf, copy);
-        if (copy < ARVIK_GID_LEN - 1)
+        if (copy < ARVIK_GID_LEN - 1) {
             memset(header.arvik_gid + copy, ' ', (ARVIK_GID_LEN - 1) - copy);
+	}
         header.arvik_gid[ARVIK_GID_LEN - 1] = ' ';
 
         /* mode */
@@ -245,8 +236,9 @@ void create_archive(const char *archive_name, int verbose,
         len = strlen(fbuf);
         copy = (len < ARVIK_MODE_LEN - 1) ? len : (ARVIK_MODE_LEN - 1);
         memcpy(header.arvik_mode, fbuf, copy);
-        if (copy < ARVIK_MODE_LEN - 1)
+        if (copy < ARVIK_MODE_LEN - 1) {
             memset(header.arvik_mode + copy, ' ', (ARVIK_MODE_LEN - 1) - copy);
+	}
         header.arvik_mode[ARVIK_MODE_LEN - 1] = ' ';
 
         /* size */
@@ -254,8 +246,9 @@ void create_archive(const char *archive_name, int verbose,
         len = strlen(fbuf);
         copy = (len < ARVIK_SIZE_LEN - 1) ? len : (ARVIK_SIZE_LEN - 1);
         memcpy(header.arvik_size, fbuf, copy);
-        if (copy < ARVIK_SIZE_LEN - 1)
+        if (copy < ARVIK_SIZE_LEN - 1) {
             memset(header.arvik_size + copy, ' ', (ARVIK_SIZE_LEN - 1) - copy);
+	}
         header.arvik_size[ARVIK_SIZE_LEN - 1] = ' ';
 
         memcpy(header.arvik_term, ARVIK_TERM, ARVIK_TERM_LEN);
@@ -309,14 +302,16 @@ void create_archive(const char *archive_name, int verbose,
             perror("write footer"); close(fd); exit(CREATE_FAIL);
         }
 
-        if (verbose)
+        if (verbose) {
             fprintf(stderr, "a %s\n", files[i]);
+	}
 
         close(fd);
     }
 
-    if (archive_name != NULL)
+    if (archive_name != NULL) {
         close(afd);
+    }
 }
 
 
@@ -331,7 +326,10 @@ void extract_archive(const char *archive_name, int verbose)
     /* open archive */
     if (archive_name != NULL) {
         afd = open(archive_name, O_RDONLY);
-        if (afd < 0) { perror("open archive"); exit(EXTRACT_FAIL); }
+        if (afd < 0) {
+	  perror("open archive");
+	  exit(EXTRACT_FAIL);
+	}
     }
 
     /* verify ARVIK_TAG */
@@ -397,7 +395,13 @@ void extract_archive(const char *archive_name, int verbose)
         if (fsize_long % 2 == 1) {
             char pad;
             r = read(afd, &pad, 1);
-            if (r != 1) { perror("read padding"); close(outfd); if (archive_name) close(afd); exit(READ_FAIL); }
+            if (r != 1) {
+	      perror("read padding");
+	      close(outfd);
+	      if (archive_name)
+		close(afd);
+	      exit(READ_FAIL);
+	    }
         }
 
         /* read footer */
@@ -432,7 +436,6 @@ void extract_archive(const char *archive_name, int verbose)
 
     if (archive_name) close(afd);
 }
-
 
 
 void list_archive(const char *archive_name, int verbose) {
